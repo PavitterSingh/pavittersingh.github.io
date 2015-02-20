@@ -1,0 +1,92 @@
+---
+title: "MLPredictClasse"
+author: "Pavitter Singh"
+date: "Monday, February 16, 2015"
+output: html_document
+---
+# Backgroud
+In this project, we are given a data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set.
+
+The data for this project come from this source: <http://groupware.les.inf.puc-rio.br/har>. 
+
+# Analysis
+Initially I looked at the data to have a feel of what it looks like. To do that I read the data from working directory.
+
+Note: in last code chunk i have set the eval=FALSE so that the code does not run automatically, if you want to try this on your machine, then please have the data in your working directory and remove the eval settings from all code chunks.
+
+```{r, eval=FALSE}
+FullData<-read.csv("pml-training.csv")
+head(FullData)
+```
+
+I found that there are fields with majority of empty cells, further data analysis showed that in few columns we have junk values. To see the reason for empty cells I looked at data closely and found that whereever very few data points are visible, it is because of new-window value being "yes". I looked at if new-Window makes a difference in classification, it was not making any difference in classification, so decided to remove all such columns where we have very limited data.
+
+```{r, echo=FALSE}
+# Read Data
+FullData1<-read.csv("pml-training.csv", na.strings=c("", "#Div/0!", "NA"))
+#create a vector to capture count NA for each column, except first 7 columns and last column as these are simple identifiers or output column
+nacol<-rep(NULL, ncol(FullData1)-8)
+# calculate count NAs in each Column
+for(i in c(8:(ncol(FullData1)-1))) {nacol[i]<-sum(is.na(FullData1[, i]))}
+# Subset data wherer we have no NA value in the column
+modelData<-FullData1[, which(nacol==0)]
+# Add classe variable to modelData
+modelData$classe<-FullData1$classe
+```
+Now we have the clean data, Then I loaded the required packages for the analysis.
+```{r, echo=FALSE}
+require(caret)
+require(randomForest)
+require(foreach)
+```
+
+Then I partitioned data in test and train from modelData
+
+```{r, echo=FALSE}
+set.seed(300)
+inTrain<-createDataPartition(y=modelData$classe, p=0.7, list=FALSE)
+trainData<-modelData[inTrain,]; testData<-modelData[-inTrain,]
+```
+
+I tried few models with "rpart" and "pca" methods, however the accuracy was in the range of 50%, so decided to not to use those. Finally I used "rf" method.
+
+```{r}
+# Develop Model based on randomForest
+x <- trainData[-ncol(trainData)]
+y <- trainData$classe
+
+# using foreach command to make forests with 150 trees each, and using combine function from randomForest package
+rf <- foreach(ntree=rep(150, 6), .combine=randomForest::combine, .packages='randomForest') %do% {
+        randomForest(x, y, ntree=ntree)}
+# Predict output for test data form given training file
+predicttest <- predict(rf, newdata=testData)
+confusionMatrix(predicttest,testData$classe)
+```
+
+You can see that cross validation shows the MOdel was 99.4% accurate with given data. It gave me good confidence to go with the pml-testing file prediction.
+
+```{r, eval=FALSE}
+#Read data the same way we read the training data file
+TestData1<-read.csv("pml-testing.csv", na.strings=c("", "#Div/0!", "NA"))
+# Subset data the same way we did for training data file
+TestData2<-TestData1[, which(nacol==0)]
+# predict using the model developed with tarining data
+answers <- predict(rf, newdata=TestData2)
+```
+
+predicted results were then converted into files as per code shared in the assignment.
+
+```{r, eval=FALSE}
+pml_write_files = function(x){
+        n = length(x)
+        for(i in 1:n){
+                filename = paste0("problem_id_",i,".txt")
+                write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+        }
+}
+pml_write_files(answers)
+```
+
+Final score was 20 out of 20, that means all predictions were correct with this Model.
